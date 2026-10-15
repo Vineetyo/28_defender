@@ -13,17 +13,18 @@ PHASES = [random.uniform(0, math.tau) for _ in range(3)]
 
 def sky_color(wave):
     """Return an (r, g, b) sky colour for the current wave, or None for the default."""
-    pass
+    level = max(0, min(int(wave) - 1, 12))
+    return (5 + 15 * level, 5 + 8 * level, 20 + 19 * level)
 
 
 def on_humanoid_rescued(humanoid):
     """Called when the player catches a falling humanoid; add a bonus or celebration here."""
-    pass
+    humanoid.rescue_popup_time = 1.2
 
 
 def bonus_life_threshold():
     """Return a score value at which the player earns an extra life, or None to disable bonus lives."""
-    pass
+    return 10000
 
 
 def wrap_delta(a, b):
@@ -42,8 +43,10 @@ class Humanoid:
         self.state = "ground"
         self.fall_from = self.y
         self.vy = 0.0
+        self.rescue_popup_time = 0.0
 
     def update(self, dt):
+        self.rescue_popup_time = max(0.0, self.rescue_popup_time - dt)
         if self.state == "falling":
             self.vy += 300 * dt
             self.y += self.vy * dt
@@ -148,9 +151,12 @@ class Game:
         player = self.player
         player.update(dt, keys)
         threshold = bonus_life_threshold()
-        if threshold and self.score // threshold > self.bonus_awarded:
-            self.bonus_awarded = self.score // threshold
-            self.lives += 1
+        if threshold:
+            milestones = self.score // threshold
+            new_lives = milestones - self.bonus_awarded
+            if new_lives > 0:
+                self.lives += new_lives
+                self.bonus_awarded = milestones
         if keys[pygame.K_SPACE] and player.cooldown <= 0:
             player.cooldown = 0.18
             self.bullets.append({"x": player.x + player.facing * 20, "y": player.y, "dir": player.facing, "life": 0.7})
@@ -203,7 +209,7 @@ class Game:
         blips += [(l.x, l.y, (255, 90, 90) if l.mutant else (230, 200, 60)) for l in self.landers]
         blips.append((self.player.x, self.player.y, (255, 255, 255)))
         for x, y, color in blips:
-            rx = self.screen_x(x) % VIEW_W
+            rx = (x % WORLD_W) / WORLD_W * VIEW_W
             ry = (y - PLAY_TOP) / (VIEW_H - PLAY_TOP) * (RADAR_H - 8) + 4
             pygame.draw.rect(screen, color, (rx - 2, ry - 2, 4, 4))
 
@@ -234,6 +240,13 @@ class Game:
         if self.state == "lose":
             label = self.font.render("GAME OVER - Press R", True, (255, 255, 120))
             screen.blit(label, label.get_rect(center=(VIEW_W // 2, VIEW_H // 2)))
+        for humanoid in self.humanoids:
+            if humanoid.rescue_popup_time > 0:
+                sx = self.screen_x(humanoid.x)
+                if -40 < sx < VIEW_W + 40:
+                    rise = (1.2 - humanoid.rescue_popup_time) * 20
+                    popup = self.font.render("+500", True, (255, 255, 120))
+                    screen.blit(popup, popup.get_rect(center=(round(sx), round(humanoid.y - 30 - rise))))
 
 
 def main():
